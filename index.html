@@ -574,6 +574,53 @@
         color: #0e1a28;
       }
 
+      /* ========== VISITOR COUNTER (NEW) ========== */
+      .visitor-counter {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        background: #eef3fb;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #2c3d55;
+        border: 1px solid #dce5f2;
+        transition: background 0.2s;
+      }
+
+      .visitor-counter:hover {
+        background: #e3ebf7;
+      }
+
+      .visitor-counter .icon {
+        width: 16px;
+        height: 16px;
+        fill: #3d5779;
+        flex-shrink: 0;
+      }
+
+      .visitor-counter .count {
+        font-variant-numeric: tabular-nums;
+        color: #0d1219;
+        font-weight: 700;
+        min-width: 2ch;
+      }
+
+      .visitor-counter .count.loading {
+        color: #7d91aa;
+        font-weight: 500;
+      }
+
+      .visitor-counter .count.error {
+        color: #b91c1c;
+        font-weight: 500;
+      }
+
+      .visitor-counter .count.loading::after {
+        content: "…";
+      }
+
       /* responsiveness */
       @media (max-width: 900px) {
         .hero-text h1 {
@@ -646,6 +693,10 @@
         .footer-links {
           flex-wrap: wrap;
           gap: 16px;
+        }
+
+        .visitor-counter {
+          order: 3;
         }
       }
     </style>
@@ -756,6 +807,29 @@
       <!-- footer -->
       <footer class="footer">
         <div class="footer-copy">© 2026 DigitalAcademy.</div>
+
+        <!-- ========== VISITOR COUNTER (NEW) ========== -->
+        <div
+          class="visitor-counter"
+          id="visitorCounter"
+          role="status"
+          aria-live="polite"
+          aria-label="Unique page visits"
+        >
+          <svg
+            class="icon"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
+            />
+          </svg>
+          <span>Views:</span>
+          <span class="count loading" id="visitorCount">—</span>
+        </div>
+
         <div class="footer-links">
           <a href="#">Privacy</a>
           <a href="#">Terms</a>
@@ -763,5 +837,130 @@
         </div>
       </footer>
     </div>
+
+    <!-- ========== VISITOR COUNTER SCRIPT (NEW) ========== -->
+    <script>
+      (function () {
+        "use strict";
+
+        var countEl = document.getElementById("visitorCount");
+        if (!countEl) return;
+
+        // This is a client-side unique visitor counter.
+        // - Uses a free public counter API (CountAPI) to persist the total.
+        // - Uses localStorage to prevent the same browser from being
+        //   counted more than once (per session + permanent marker).
+        // For a production site you should replace this with a server-side
+        // solution (e.g. Google Analytics, Plausible, or your own backend).
+
+        var STORAGE_KEY = "da_unique_visitor_v1";
+        var SESSION_KEY = "da_visit_session_v1";
+        var COUNTER_ENDPOINT =
+          "https://api.countapi.xyz/hit/digitalacademy.example.com/visitors";
+
+        function formatNumber(n) {
+          if (typeof n !== "number" || isNaN(n)) return "—";
+          return n.toLocaleString("en-US");
+        }
+
+        function showError() {
+          countEl.classList.remove("loading");
+          countEl.classList.add("error");
+          countEl.textContent = "unavailable";
+        }
+
+        function showCount(n) {
+          countEl.classList.remove("loading", "error");
+          countEl.textContent = formatNumber(n);
+        }
+
+        function hasVisitedBefore() {
+          try {
+            return localStorage.getItem(STORAGE_KEY) === "1";
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function markVisited() {
+          try {
+            localStorage.setItem(STORAGE_KEY, "1");
+          } catch (e) {
+            /* ignore */
+          }
+        }
+
+        function isNewSession() {
+          try {
+            if (sessionStorage.getItem(SESSION_KEY) === "1") return false;
+            sessionStorage.setItem(SESSION_KEY, "1");
+            return true;
+          } catch (e) {
+            // If sessionStorage unavailable, treat as new session
+            return true;
+          }
+        }
+
+        // Only increment if this browser hasn't been counted before
+        // AND this is a new browser session (prevents refresh spam).
+        var shouldIncrement = !hasVisitedBefore() && isNewSession();
+
+        if (shouldIncrement) {
+          fetch(COUNTER_ENDPOINT, { method: "GET" })
+            .then(function (res) {
+              if (!res.ok) throw new Error("Counter API error");
+              return res.json();
+            })
+            .then(function (data) {
+              showCount(data.value);
+              markVisited();
+            })
+            .catch(function () {
+              // Fallback: display a local tally if the API fails
+              var fallback = 1;
+              try {
+                var stored = parseInt(
+                  localStorage.getItem("da_local_tally") || "0",
+                  10,
+                );
+                fallback = stored + 1;
+                localStorage.setItem("da_local_tally", String(fallback));
+              } catch (e) {
+                /* ignore */
+              }
+              showCount(fallback);
+              markVisited();
+            });
+        } else {
+          // Already counted: just fetch the current count without incrementing
+          var readEndpoint =
+            "https://api.countapi.xyz/get/digitalacademy.example.com/visitors";
+          fetch(readEndpoint, { method: "GET" })
+            .then(function (res) {
+              if (!res.ok) throw new Error("Counter API error");
+              return res.json();
+            })
+            .then(function (data) {
+              showCount(data.value);
+            })
+            .catch(function () {
+              // Fallback: show local tally if available, else placeholder
+              var local = 0;
+              try {
+                local =
+                  parseInt(localStorage.getItem("da_local_tally") || "0", 10) ||
+                  0;
+              } catch (e) {
+                /* ignore */
+              }
+              if (local > 0) {
+                showCount(local);
+              } else {
+                showError();
+              }
+            });
+        }
+      })();
+    </script>
   </body>
 </html>
